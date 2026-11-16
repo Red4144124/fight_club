@@ -1,0 +1,10 @@
+{
+  "name": "kontakt-cinematic",
+  "version": "0.4.0",
+  "private": true,
+  "description": "Procedural WebGL2 1v1 fighting game",
+  "scripts": {
+    "start": "node server.js",
+    "check": "node --check engine.js && node --check game.js && node --check server.js"
+  }
+}
