@@ -1,0 +1,12 @@
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "module": "none",
+    "lib": ["ES2020", "DOM"],
+    "strict": true,
+    "noEmitOnError": true,
+    "skipLibCheck": true,
+    "outFile": "public/game.js"
+  },
+  "files": ["src/combat.ts", "src/audio.ts", "src/render.ts", "src/main.ts"]
+}

@@ -1,36 +1,82 @@
 <!doctype html>
 <html lang="ru">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="theme-color" content="#0b1016">
-<title>КОНТАКТ: BLOODLINE — 3D файтинг / JavaScript</title>
-<link rel="stylesheet" href="style.css">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#090d15">
+  <meta name="description" content="КОНТАКТ HD — пошаговый 2D-файтинг с рисованными спрайтами, физикой, кровью и подсечками.">
+  <title>КОНТАКТ HD — аркадный файтинг</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/phaser/3.90.0/phaser.min.js" defer></script>
+  <script src="game.js" defer></script>
 </head>
-<body><div class="wrap">
-<header><div class="brand"><div class="logo">×</div><div><b>КОНТАКТ<span style="color:var(--red)">.</span></b><small>BLOODLINE / CINEMATIC FIGHT CLUB</small></div></div><div class="headright"><span>● CINEMA / WEBGL</span><button id="cameraBtn" class="textbtn cam-toggle" type="button" aria-pressed="true">◉ КИНОКАМЕРА</button><button id="soundBtn" class="textbtn" type="button" aria-pressed="true">♫ ЗВУК ВКЛ</button></div></header>
-<div class="screens">
-<section id="setupScreen" class="active"><div class="intro"><div class="eyebrow" id="setupStep">01 / СОЗДАНИЕ БОЙЦА</div><h1>Каждый удар <em>оставляет след.</em></h1><p id="setupDesc">Новая система повреждений: фингалы, ссадины, кровь на одежде и кулаках. Подсечка отправляет соперника на колено на один ход.</p></div>
-<div class="setup-layout">
-<aside class="pane custom"><div class="paneheading"><span>ДОСЬЕ / ПЕРСОНАЖ</span><span id="personNum">БОЕЦ 01</span></div>
-<div class="field"><div class="lab">РЕЖИМ</div><div class="modes" id="modeChoice"><button class="active" data-mode="ai" type="button">ПРОТИВ ИИ</button><button data-mode="local" type="button">НА ДВОИХ</button></div></div>
-<div class="field"><label for="name">ИМЯ БОЙЦА</label><input type="text" id="name" maxlength="14" value="НОВА" autocomplete="off"></div>
-<div class="twocol"><div class="field"><label for="class">СТИЛЬ</label><select id="class"><option value="balanced">ТАКТИК</option><option value="power">ТАРАН</option><option value="agile">ТЕНЬ</option></select></div><div class="field"><label for="build">ТЕЛОСЛОЖЕНИЕ</label><select id="build"><option value="athletic">Атлетичное</option><option value="heavy">Массивное</option><option value="slim">Сухое</option></select></div></div>
-<div class="twocol"><div class="field"><label for="hair">ПРИЧЁСКА</label><select id="hair"><option value="short">Короткая</option><option value="fade">Фейд</option><option value="mohawk">Ирокез</option><option value="bun">Пучок</option><option value="bald">Без волос</option></select></div><div class="field"><label for="outfit">ОДЕЖДА</label><select id="outfit"><option value="tank">Боевая майка</option><option value="tee">Футболка</option><option value="rash">Рашгард</option></select></div></div>
-<div class="twocol"><div class="field"><div class="lab">ТОН КОЖИ</div><div class="swatches" id="skin"></div></div><div class="field"><div class="lab">ЦВЕТ ГЛАЗ</div><div class="swatches" id="eyes"></div></div></div>
-<div class="twocol"><div class="field"><div class="lab">ВЕРХ ЭКИПИРОВКИ</div><div class="swatches" id="top"></div></div><div class="field"><div class="lab">ШОРТЫ / БРЮКИ</div><div class="swatches" id="pants"></div></div></div>
-<div class="editorbottom"><small id="editorNote">Внешность и стиль боя влияют на визуал и характеристики.</small><button id="startBtn" class="mainbtn" type="button">НА АРЕНУ ↗</button></div>
-</aside>
-<div class="pane preview"><div class="tagline"><span>CHARACTER SCULPT / LIVE</span><span>CINEMATIC 3D ●</span></div><div class="canvaswrap" id="previewHost"><canvas id="previewCanvas" aria-label="Трёхмерная модель выбранного бойца"></canvas><button id="damagePreviewBtn" class="damage-preview-btn" type="button" aria-pressed="false">◉ ПОКАЗАТЬ ФИНГАЛ И КРОВЬ</button><div class="floorline"></div><div class="engine-error" id="previewError">WebGL 2 недоступен. Попробуй открыть игру в актуальной версии Chrome или Firefox.</div></div><div class="previewhud"><div><h2 id="previewName">НОВА</h2><small id="previewSubtitle">ТАКТИК · АТЛЕТ</small></div><div class="statnums"><span>МОЩЬ<b id="powerStat">70</b></span><span>СКОРОСТЬ<b id="speedStat">70</b></span><span>СТОЙКОСТЬ<b id="defStat">70</b></span></div></div></div>
-</div></section>
-<section id="battleScreen"><div class="battlehead"><div><div class="eyebrow">02 / БОЕВОЙ КЛУБ — АРЕНА 07</div><h2>Дистанция. Контакт. Последствия.</h2></div><button class="textbtn" id="backBtn" type="button">← РЕДАКТОР</button></div>
-<div class="battle-layout"><div class="pane arena-panel"><div class="hudbar"><div><div class="unithead"><strong id="p1Name">НОВА</strong><small id="p1Class">ТАКТИК</small></div><div class="bars"><span id="hp1"></span></div><div class="stam"><span id="en1"></span></div><div class="healthnums"><span id="hp1Txt">100 HP</span><span id="en1Txt">100 EN</span></div><div class="injury-status" id="status1" aria-live="polite"></div></div><div class="vs">VS</div><div class="enemy"><div class="unithead"><strong id="p2Name">КРАШ</strong><small id="p2Class">ТАРАН</small></div><div class="bars"><span id="hp2"></span></div><div class="stam"><span id="en2"></span></div><div class="healthnums"><span id="hp2Txt">110 HP</span><span id="en2Txt">100 EN</span></div><div class="injury-status" id="status2" aria-live="polite"></div></div></div>
-<div class="fight-scene cinemabars" id="sceneHost"><canvas id="fightCanvas" aria-label="Трёхмерная арена боя с анимированными персонажами"></canvas><div class="arenaInfo">LIVE CAMERA · SECTOR 07 <span class="live-record">● REC</span></div><div class="lens-info" aria-hidden="true">24 FPS LOOK <span>·</span> WARM / COOL RIM</div><div class="roundpill" id="roundPill">РАУНД 01</div><div class="announcer" id="announcer">K.O.</div><div class="hitnumber" id="hitNumber">−18</div><div class="impactfx" id="impactFX" aria-hidden="true"></div><div class="soundnotice">ENGINE v5.0 · JAVASCRIPT / WEBGL 2 · PROCEDURAL AUDIO</div><div class="engine-error" id="fightError">WebGL 2 недоступен. Используется резервный рендер.</div><div class="result" id="result"><div class="result-card"><div class="eyebrow">БОЙ ОКОНЧЕН</div><h2 id="resultTitle">ПОБЕДА!</h2><p id="resultSubtitle"></p><button class="mainbtn" id="rematchBtn" type="button">РЕВАНШ ↗</button><button class="textbtn" id="recreateBtn" type="button">СОЗДАТЬ БОЙЦА</button></div></div></div><div class="roundfooter"><span>● СТАТУС: <span id="fightStatus">ГОТОВ К БОЮ</span></span><span>ДИСТАНЦИЯ: <span id="distanceTxt">2.7</span> М · КОНТАКТНЫЕ УДАРЫ</span></div></div>
-<aside class="pane controls"><div class="turnline" id="turnCounter">РАУНД 01 / ТВОЙ ХОД</div><h3 id="turnName">Выбери приём</h3><p id="turnHint">Удары зависят от дистанции. Сначала сократи её, чтобы провести бросок.</p>
-<div class="moves" id="moves"><button type="button" data-action="jaw"><span class="idx">01 / HEAD</span><strong>В ЧЕЛЮСТЬ</strong><small>Быстрый прямой удар</small></button><button type="button" data-action="elbow"><span class="idx">02 / CLOSE</span><strong>ЛОКТЕМ</strong><small>Ближняя дистанция</small></button><button type="button" data-action="knee"><span class="idx">03 / BODY</span><strong>КОЛЕНОМ</strong><small>Удар по корпусу</small></button><button type="button" data-action="sweep"><span class="idx">04 / LOW</span><strong>ПОДСЕЧКА</strong><small>На одно колено · минус ход</small></button><button type="button" data-action="hipthrow" class="throw"><span class="idx">05 / GRAPPLE</span><strong>ЧЕРЕЗ БЕДРО</strong><small>Захват, разворот, бросок</small></button><button type="button" data-action="tripthrow" class="throw"><span class="idx">06 / TRIP</span><strong>ЗАЦЕП / ПОДНОЖКА</strong><small>Ближний контакт · колено</small></button></div>
-<div class="footwork"><button data-action="stepback" type="button">← ОТОЙТИ</button><button data-action="guard" type="button">▣ ЗАЩИТА</button><button data-action="stepin" type="button">СБЛИЗИТЬСЯ →</button></div><div id="kneelNotice" class="kneel-notice" role="status" hidden></div><button id="recoverBtn" data-action="recover" class="recover-btn" type="button" hidden>↗ ПОДНЯТЬСЯ С КОЛЕНА — 1 ХОД</button><div class="damage-key"><span>●</span> ФИНГАЛ • ССАДИНЫ • КРОВЬ НА ЭКИПИРОВКЕ И КУЛАКАХ</div><div class="controlhint">Клавиши <span class="keytop">1–6</span> — приёмы · <span class="keytop">A / D</span> — шаги · <span class="keytop">ПРОБЕЛ</span> — защита. В режиме на двоих выбор первого игрока скрывается.</div>
-<div class="loghead"><span>ХРОНИКА РАУНДОВ</span><span id="logCount">00</span></div><div class="loglist" id="logList" aria-live="polite"></div>
-</aside></div></section>
-</div><div class="footer"><span>КОНТАКТ / BLOODLINE / 05</span><span>JAVASCRIPT · WEBGL 2 · WEB AUDIO · PERSISTENT DAMAGE</span></div></div>
-<script src="engine.js"></script><script src="game.js"></script>
-</body></html>
+<body>
+  <div class="app">
+    <header class="topbar">
+      <div class="identity"><div class="brand-symbol">✕</div><div><div class="brand">КОНТАКТ<span>.</span></div><div class="brand-caption">ARCADE / BLOODLINE <b>HD</b></div></div></div>
+      <div class="top-actions"><span class="live"><i></i> БРАУЗЕРНЫЙ VERTICAL SLICE</span><button id="soundButton" class="toolbar-btn" type="button">ЗВУК: ВКЛ</button><button id="editButton" class="toolbar-btn" type="button">РЕДАКТОР</button></div>
+    </header>
+    <section class="arena-shell" aria-label="Арена боя">
+      <div class="arena-stage">
+        <div id="stage" role="img" aria-label="Два иллюстрированных бойца на ночной промышленной арене"></div>
+        <div class="hud">
+          <div class="hud-side">
+            <img src="assets/portrait_a.webp" class="portrait" alt="Портрет первого бойца">
+            <div class="hud-body"><div class="hud-name"><span id="name1">РЭЙНА</span><small>БОЕЦ 01</small></div><div class="hp-back"><div class="hp-front" id="hp1"></div></div><div class="st-back"><div class="st-front" id="st1"></div></div><div class="hud-facts"><span id="hpText1">106 / 106</span><span id="stText1">100 EN</span></div><div id="damage1" class="damage-txt">БЕЗ ПОВРЕЖДЕНИЙ</div></div>
+          </div>
+          <div class="round-box"><small>РАУНД</small><strong id="round">01</strong><span id="modeLabel">VS CPU</span></div>
+          <div class="hud-side reversed">
+            <img src="assets/portrait_b.webp" class="portrait" alt="Портрет второго бойца">
+            <div class="hud-body"><div class="hud-name"><span id="name2">СЭЙБЛ</span><small>БОЕЦ 02</small></div><div class="hp-back"><div class="hp-front" id="hp2"></div></div><div class="st-back"><div class="st-front" id="st2"></div></div><div class="hud-facts"><span id="hpText2">118 / 118</span><span id="stText2">100 EN</span></div><div id="damage2" class="damage-txt">БЕЗ ПОВРЕЖДЕНИЙ</div></div>
+          </div>
+        </div>
+        <div class="stage-corner">DOCKSIDE // SECTOR 09 <span>●</span></div>
+        <div class="stage-footer"><span id="statusText">ВЫБЕРИ ПРИЁМ</span><span>ДИСТАНЦИЯ <b id="distance">476 PX</b></span></div>
+        <div class="stage-grain" aria-hidden="true"></div>
+        <section id="intro" class="intro" aria-label="Настройка боя">
+          <div class="intro-card">
+            <div class="intro-content">
+              <div class="eyebrow">НОВАЯ ВЕРСИЯ / HD ARCADE</div>
+              <h1>БОЙ, КОТОРЫЙ <em>ОСТАВЛЯЕТ СЛЕДЫ.</em></h1>
+              <p>Новые рисованные бойцы, отдельные позы ударов, кровь на одежде и бинтах, фингалы и ссадины. Пошаговый бой 1 на 1.</p>
+              <div class="intro-form">
+                <label class="field-label">ТВОЙ БОЕЦ</label><div class="option-strip">
+                  <button class="option chosen" data-kit="a" type="button"><span class="swatch-red"></span> РЭЙНА · КРАСНАЯ ФОРМА</button>
+                  <button class="option" data-kit="b" type="button"><span class="swatch-blue"></span> СЭЙБЛ · СИНЯЯ ФОРМА</button>
+                </div>
+                <label class="field-label" for="fighterName">ИМЯ НА АРЕНЕ</label><input id="fighterName" maxlength="16" value="РЭЙНА" autocomplete="off">
+                <label class="field-label">ТЕЛОСЛОЖЕНИЕ</label><div class="option-strip build-strip">
+                  <button class="option" data-build="slim" type="button">ЛОВКИЙ</button><button class="option chosen" data-build="athletic" type="button">АТЛЕТ</button><button class="option" data-build="power" type="button">ТЯЖЁЛЫЙ</button>
+                </div>
+                <label class="field-label">РЕЖИМ</label><div class="option-strip">
+                  <button class="option chosen" data-mode="ai" type="button">ПРОТИВ CPU</button><button class="option" data-mode="local" type="button">2 ИГРОКА</button>
+                </div>
+              </div>
+              <button class="start-button" id="startButton" type="button">ВЫЙТИ НА АРЕНУ <span>↗</span></button>
+              <div class="intro-footer">СОХРАНЯЕТСЯ КЛАССИЧЕСКИЙ ПОШАГОВЫЙ БОЙ.</div>
+            </div>
+            <div class="intro-portrait"><span class="intro-big-num">01</span><img id="introFighter" src="assets/fighter_a_idle.webp" alt="Выбранный боец"><span class="intro-caption">FULL-BODY / HAND-DRAWN SPRITE</span></div>
+          </div>
+        </section>
+        <div id="gameOver" class="game-over is-hidden" role="status"><div class="gameover-panel"><span>ПОЕДИНОК ЗАВЕРШЁН</span><h2 id="winner">ПОБЕДА!</h2><p id="winnerDetails"></p><button id="rematch" class="start-button" type="button">РЕВАНШ ↗</button></div></div>
+      </div>
+    </section>
+    <section class="control-shell" aria-label="Выбор приёмов">
+      <div class="controls-intro"><div><div class="eyebrow">КОМАНДЫ / НАСТУПЛЕНИЕ</div><h2 id="turnActor">ТВОЙ ХОД</h2></div><p id="turnHelp">Выбери удар, защиту или движение.</p></div>
+      <div class="move-grid">
+        <button class="move" data-move="jaw" type="button"><span class="move-key">1</span><span class="move-label">В ЧЕЛЮСТЬ</span><span class="move-sub">Прямой · 17–25 DMG</span></button>
+        <button class="move" data-move="elbow" type="button"><span class="move-key">2</span><span class="move-label">ЛОКТЕМ</span><span class="move-sub">Близко · 14–21 DMG</span></button>
+        <button class="move" data-move="knee" type="button"><span class="move-key">3</span><span class="move-label">КОЛЕНОМ</span><span class="move-sub">Корпус · 18–26 DMG</span></button>
+        <button class="move" data-move="sweep" type="button"><span class="move-key">4</span><span class="move-label">ПОДСЕЧКА</span><span class="move-sub">Противник на колене</span></button>
+        <button class="move" data-move="throw" type="button"><span class="move-key">5</span><span class="move-label">БРОСОК</span><span class="move-sub">Захват · 19–27 DMG</span></button>
+        <button class="move utility" data-move="guard" type="button"><span class="move-key">6</span><span class="move-label">БЛОК</span><span class="move-sub">Снизить входящий урон</span></button>
+        <button class="move utility" data-move="approach" type="button"><span class="move-key">7</span><span class="move-label">ШАГ ВПЕРЁД</span><span class="move-sub">Приблизиться</span></button>
+        <button class="move utility" data-move="retreat" type="button"><span class="move-key">8</span><span class="move-label">ОТСТУПИТЬ</span><span class="move-sub">Сохранить дистанцию</span></button>
+      </div>
+      <button class="recover-button" id="recoverButton" data-move="recover" type="button" hidden>ПОДНЯТЬСЯ С КОЛЕНА <span>R</span></button>
+      <div class="bottom-row"><div class="notes"><span class="red-dot"></span><strong>ПОВРЕЖДЕНИЯ СОХРАНЯЮТСЯ</strong><p>Фингалы, кровь на ткани и кулаках, ссадины и пятна на полу. После реванша бойцы восстановятся.</p></div><div class="log" id="combatLog" aria-live="polite"></div></div>
+    </section>
+    <footer>КОНТАКТ HD · ПЕРВЫЙ ИГРОВОЙ СРЕЗ · РИСОВАННЫЕ 2D СПРАЙТЫ / PHASER 3 / WEBGL <span>ЗВУК ВКЛЮЧАЕТСЯ ПОСЛЕ НАЖАТИЯ</span></footer>
+  </div>
+</body>
+</html>

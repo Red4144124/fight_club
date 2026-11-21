@@ -1,239 +1,701 @@
-/* KONTAKT CINEMATIC: turn-based JS fighting game with procedural 3D rigs and WebAudio. */
-(()=>{
-'use strict';
-const $=id=>document.getElementById(id), {Arena3D,clamp,mix,smooth}=window.Arena3D;
-const rnd=(a,b)=>a+Math.random()*(b-a), pick=a=>a[Math.floor(Math.random()*a.length)], clone=a=>JSON.parse(JSON.stringify(a));
-const ARCH={balanced:{name:'ТАКТИК',power:1,speed:1.0,aim:.05,hp:106,def:1},power:{name:'ТАРАН',power:1.14,speed:.89,aim:-.02,hp:120,def:1.09},agile:{name:'ТЕНЬ',power:.92,speed:1.17,aim:.02,hp:96,def:.93}};
-const BUILD={slim:{hp:-7,power:.95,speed:1.05},athletic:{hp:0,power:1,speed:1},heavy:{hp:13,power:1.07,speed:.95}};
-const MOVES={
- jaw:{name:'Удар в челюсть',accuracy:.81,damage:[15,23],cost:17,range:3.3,crit:.20,duration:.81,speed:1.1,zone:'face'},
- elbow:{name:'Удар локтем',accuracy:.84,damage:[17,25],cost:19,range:2.6,crit:.13,duration:.79,speed:1.04,zone:'face'},
- knee:{name:'Удар коленом',accuracy:.75,damage:[19,27],cost:23,range:2.85,crit:.14,duration:.92,speed:.97,zone:'torso'},
- sweep:{name:'Низкая подсечка',accuracy:.88,damage:[9,15],cost:14,range:2.95,crit:.05,duration:1.05,speed:1.08,zone:'leg',isSweep:true},
- hipthrow:{name:'Бросок через бедро',accuracy:.69,damage:[25,34],cost:29,range:2.45,crit:.13,duration:1.62,speed:.83,zone:'torso',isThrow:true},
- tripthrow:{name:'Зацеп / подножка',accuracy:.78,damage:[14,22],cost:23,range:2.25,crit:.08,duration:1.22,speed:.88,zone:'leg',isTrip:true},
- stepin:{name:'Шаг вперёд',cost:6,duration:.70,speed:1.3,utility:true},
- stepback:{name:'Шаг назад',cost:5,duration:.70,speed:1.3,utility:true},
- guard:{name:'Защита',cost:0,duration:.55,speed:1.2,utility:true},
- recover:{name:'Подъём с колена',cost:0,duration:.85,speed:.64,utility:true},
- stagger:{name:'Удержание равновесия',cost:0,duration:.67,speed:.61,utility:true}
-};
-const COLORSETS={skin:['#edc7a8','#c58a67','#986b50','#624638'],eyes:['#9dcbec','#83b58a','#a07c5c','#c9d0d0'],top:['#ae554a','#d4cdc0','#416f7f','#536075','#607355'],pants:['#283946','#665e55','#40564b','#815e4b']};
-const P1={name:'НОВА',archetype:'balanced',build:'athletic',hair:'short',outfit:'tank',eyes:'#9dcbec',skin:'#c58a67',top:'#ae554a',pants:'#283946'};
-const P2={name:'КРАШ',archetype:'power',build:'heavy',hair:'mohawk',outfit:'tee',eyes:'#a07c5c',skin:'#986b50',top:'#416f7f',pants:'#40564b'};
-let mode='ai',editorIndex=0,editing=clone(P1),chosen=[null,null],game=null,screen='setup', muted=false,cinematic=true,showPreviewDamage=false,lastTime=0,preview,fight;
-const active={};
-class Sound {
- constructor(){this.ctx=null;this.buffer=null;this.enabled=true;}
- init(){if(!this.enabled)return;try{if(!this.ctx){const C=window.AudioContext||window.webkitAudioContext;if(!C)return;const ctx=this.ctx=new C();this.buffer=ctx.createBuffer(1,ctx.sampleRate,ctx.sampleRate);let d=this.buffer.getChannelData(0);for(let i=0;i<d.length;i++)d[i]=Math.random()*2-1;}if(this.ctx.state==='suspended')this.ctx.resume();}catch(e){console.warn('WebAudio:',e)}}
- tone(hz,to,duration=.15,gain=.18,type='sine',delay=0){if(!this.enabled||!this.ctx)return;const c=this.ctx,now=c.currentTime+delay,osc=c.createOscillator(),env=c.createGain();osc.type=type;osc.frequency.setValueAtTime(Math.max(20,hz),now);osc.frequency.exponentialRampToValueAtTime(Math.max(20,to),now+duration);env.gain.setValueAtTime(.001,now);env.gain.exponentialRampToValueAtTime(gain,now+.009);env.gain.exponentialRampToValueAtTime(.001,now+duration);osc.connect(env);env.connect(c.destination);osc.start(now);osc.stop(now+duration+.02)}
- noise(duration=.17,hz=700,gain=.14,delay=0){if(!this.enabled||!this.ctx||!this.buffer)return;const c=this.ctx,now=c.currentTime+delay,src=c.createBufferSource(),f=c.createBiquadFilter(),env=c.createGain();src.buffer=this.buffer;src.loop=true;f.type='bandpass';f.frequency.value=hz;f.Q.value=.7;env.gain.setValueAtTime(.001,now);env.gain.exponentialRampToValueAtTime(gain,now+.007);env.gain.exponentialRampToValueAtTime(.001,now+duration);src.connect(f);f.connect(env);env.connect(c.destination);src.start(now);src.stop(now+duration+.02)}
- play(kind){if(!this.enabled)return;this.init();if(!this.ctx)return;
-  switch(kind){
-  case 'bell':this.tone(550,430,.55,.12,'triangle');this.tone(830,600,.55,.045,'sine',.06);break;
-  case 'step':this.noise(.085,120,.12);this.tone(85,58,.10,.08,'sine');break;
-  case 'guard':this.tone(350,230,.15,.065,'triangle');this.noise(.09,1250,.05);break;
-  case 'whoosh':this.noise(.23,1750,.17);this.noise(.13,3400,.05,.05);break;
-  case 'punch':this.tone(120,54,.18,.26);this.noise(.16,320,.20);this.noise(.08,2800,.08);break;
-  case 'elbow':this.tone(140,55,.20,.28);this.noise(.20,430,.22);this.noise(.08,3800,.10);break;
-  case 'knee':this.tone(105,44,.27,.34);this.noise(.26,230,.19);break;
-  case 'sweep':this.tone(105,45,.17,.14);this.noise(.22,990,.11);break;
-  case 'grab':this.noise(.21,520,.13);this.tone(170,100,.12,.10,'triangle');break;
-  case 'throw':this.tone(105,41,.35,.35);this.noise(.35,170,.32);this.noise(.15,700,.12,.03);break;
-  case 'whiff':this.noise(.18,2300,.16);break;
-  case 'ko':this.tone(94,31,.70,.26);this.tone(228,50,.70,.10,'triangle',.08);break;
-  }
- }
-}
-const sound=new Sound();
-function makeFighter(cfg,side){const a=ARCH[cfg.archetype],b=BUILD[cfg.build],hp=a.hp+b.hp;return {cfg:clone(cfg),name:(cfg.name||'БОЕЦ').trim().slice(0,14).toUpperCase(),side,facing:side===1?1:-1,hp,maxHp:hp,energy:100,power:a.power*b.power,speed:a.speed*b.speed,aim:a.aim,def:a.def,scars:[],injuries:[],fistBlood:0,kneelTurns:0,kneelRound:-1,kneelEase:0,x:side===1?-1.50:1.50,renderX:side===1?-1.50:1.50,renderZ:side===1?.09:-.09,pose:{},guard:false,ko:null,stumble:0,miss:0};}
-function setupSwatches(){for(let [key,values] of Object.entries(COLORSETS)){const host=$(key);host.replaceChildren();for(let v of values){const b=document.createElement('button');b.className='swatch';b.style.setProperty('--sw',v);b.type='button';b.dataset.colorKey=key;b.dataset.colorValue=v;b.setAttribute('aria-label',key+': '+v);b.title=v;host.append(b);}}}
-function renderSetup(){for(let [key,id] of [['archetype','class'],['build','build'],['hair','hair'],['outfit','outfit']])$(id).value=editing[key];$('name').value=editing.name;
- document.querySelectorAll('[data-color-key]').forEach(b=>{const on=editing[b.dataset.colorKey]===b.dataset.colorValue;b.classList.toggle('selected',on);b.setAttribute('aria-pressed',on?'true':'false')});
- document.querySelectorAll('[data-mode]').forEach(b=>b.classList.toggle('active',b.dataset.mode===mode));
- $('previewName').textContent=editing.name||'БОЕЦ';$('previewSubtitle').textContent=ARCH[editing.archetype].name+' · '+({slim:'СУХОЙ',athletic:'АТЛЕТ',heavy:'МАССИВНЫЙ'})[editing.build];
- const st=ARCH[editing.archetype],bu=BUILD[editing.build];$('powerStat').textContent=Math.round(st.power*bu.power*70);$('speedStat').textContent=Math.round(st.speed*bu.speed*70);$('defStat').textContent=Math.round((st.hp+bu.hp)*.69);
- $('personNum').textContent=editorIndex===0?'БОЕЦ 01':'БОЕЦ 02';$('setupStep').textContent=editorIndex===0?'01 / СОЗДАНИЕ БОЙЦА':'01 / СОЗДАНИЕ СОПЕРНИКА';
- $('modeChoice').style.display=editorIndex===0?'flex':'none';$('startBtn').textContent=mode==='local'&&editorIndex===0?'ДАЛЕЕ →':'НА АРЕНУ ↗';
- $('editorNote').textContent=mode==='local'&&editorIndex===0?'После этого второй игрок создаст своего бойца.':'Цвета и анатомия видны в 3D сразу.';
-}
-setupSwatches();
-function initRenderers(){try{preview=new Arena3D($('previewCanvas'),{preview:true});fight=new Arena3D($('fightCanvas'));if(preview.software){document.querySelector('.headright span').textContent='● 2.5D FALLBACK';document.querySelector('.footer span:last-child').textContent='СОВМЕСТИМЫЙ 2.5D-РЕЖИМ · WEB AUDIO';}}catch(e){console.error(e);$('previewError').classList.add('show');$('fightError').classList.add('show');}}
-function showScreen(to){screen=to;$('setupScreen').classList.toggle('active',to==='setup');$('battleScreen').classList.toggle('active',to==='battle');window.scrollTo({top:0,behavior:'instant'});}
-function startBattle(){if(fight){fight.floorStains=[];fight.bursts=[];fight.dust=[];fight.droplets=[];}chosen[0]=chosen[0]||clone(editing);chosen[1]=chosen[1]||(mode==='ai'?clone(P2):clone(editing));game={p1:makeFighter(chosen[0],1),p2:makeFighter(chosen[1],2),round:1,pending:null,busy:false,over:false,action:null,koPending:false,koTime:0,log:0,announcerTime:0,shake:0};
- $('result').classList.remove('show');$('logList').replaceChildren();$('announcer').classList.remove('visible');addLog('Бойцы выходят на арену. Соблюдай дистанцию.');
- showScreen('battle');hud();turnUI();sound.play('bell');announce('FIGHT!',.85);}
-function hud(){if(!game)return;for(let i=1;i<=2;i++){const f=game['p'+i];$('p'+i+'Name').textContent=f.name;$('p'+i+'Class').textContent=ARCH[f.cfg.archetype].name;$('hp'+i).style.width=(100*clamp(f.hp/f.maxHp,0,1))+'%';$('en'+i).style.width=f.energy+'%';$('hp'+i+'Txt').textContent=f.hp+' / '+f.maxHp+' HP';$('en'+i+'Txt').textContent=f.energy+' EN';const badge=$('status'+i);if(badge){badge.textContent=f.kneelTurns?'● НА КОЛЕНЕ':f.injuries.some(w=>w.type==='bruise')?'● ФИНГАЛ / ССАДИНЫ':f.injuries.length?'● СЛЕДЫ УДАРОВ':'';badge.classList.toggle('kneeling',!!f.kneelTurns);}}
- $('distanceTxt').textContent=Math.abs(game.p2.x-game.p1.x).toFixed(1);$('roundPill').textContent='РАУНД '+String(game.round).padStart(2,'0');}
-function addLog(msg,critical=false){let div=document.createElement('div');div.className='logitem'+(critical?' critical':'');div.textContent=msg;$('logList').prepend(div);while($('logList').children.length>14)$('logList').lastElementChild.remove();if(game){game.log++;$('logCount').textContent=String(game.log).padStart(2,'0');}}
-function announce(text,time=1.1){if(!game)return;game.announcerTime=time;$('announcer').textContent=text;$('announcer').classList.add('visible')}
-function popNumber(defender,text){const el=$('hitNumber');el.textContent=text;el.style.left=defender.side===1?'30%':'64%';el.style.top='38%';el.classList.remove('pop');void el.offsetWidth;el.classList.add('pop')}
-function screenBlood(defender,damage){const host=$('impactFX');if(!host)return;const count=clamp(Math.round(damage*.42),5,13),x=defender.side===1?31:65;for(let i=0;i<count;i++){const n=document.createElement('span');n.className='blood-dot';n.style.left=x+rnd(-3,3)+'%';n.style.top=rnd(39,53)+'%';n.style.setProperty('--dx',rnd(-84,84)+'px');n.style.setProperty('--dy',rnd(68,210)+'px');n.style.setProperty('--dur',rnd(.38,.68)+'s');n.style.width=n.style.height=rnd(2.5,6.5)+'px';host.append(n);n.addEventListener('animationend',()=>n.remove(),{once:true});}while(host.children.length>90)host.firstChild.remove();}
-function turnUI(){
- if(!game)return;let dis=game.busy||game.over;
- const activePlayer=mode==='local'?(game.pending?game.p2:game.p1):game.p1;
- const needRise=!dis&&activePlayer.kneelTurns>0;
- document.querySelectorAll('[data-action]').forEach(b=>{b.disabled=dis||(needRise&&b.dataset.action!=='recover');});
- const rise=$('recoverBtn'),note=$('kneelNotice');
- if(rise){rise.hidden=!needRise;rise.disabled=dis;}
- if(note){note.hidden=!needRise;note.textContent=needRise?activePlayer.name+' потерял равновесие. Этот ход — подъём с колена; атаковать нельзя.':'';}
- if(game.over){$('turnName').textContent='Бой окончен';$('turnHint').textContent='Нокаут или завершение поединка. Выбери реванш.';return;}
- if(game.busy){$('turnName').textContent='Идёт обмен приёмами';$('turnHint').textContent='Попадания оставляют синяки, ссадины и следы крови.';return;}
- $('turnCounter').textContent='РАУНД '+String(game.round).padStart(2,'0')+(mode==='local'?(game.pending?' / ИГРОК 2':' / ИГРОК 1'):' / ТВОЙ ХОД');
- $('turnName').textContent=needRise?'Поднимись с колена':mode==='local'?(game.pending?'Ход игрока 2':'Ход игрока 1'):'Выбери приём';
- $('turnHint').textContent=needRise?'После подсечки боец пропускает один ход — сейчас он поднимается, пока соперник может атаковать.':mode==='local'?(game.pending?'Приём первого игрока скрыт. Выбери ответ.':'Выбери приём и передай управление.'):'Для подножки подойди вплотную. Подсечка заставит соперника опуститься на колено на один ход.';
- $('fightStatus').textContent=needRise?'ВОССТАНОВЛЕНИЕ':'ОЖИДАНИЕ ХОДА';
-}
-function aiAction(bot,player){if(bot.kneelTurns>0)return 'recover';const dist=Math.abs(bot.x-player.x);if(dist>3.6&&Math.random()<.84)return 'stepin';if(bot.energy<18&&Math.random()<.55)return 'guard';if(dist<2.2&&Math.random()<.10)return 'stepback';
- const options=Object.entries(MOVES).filter(([k,m])=>!m.utility).map(([k,m])=>({k,w:(m.range>=dist?1:.1)*(m.isThrow?(dist<2.5?1.6:.15):1)*(bot.energy<m.cost?.18:1)*(k==='elbow'?1.2:1)*(k==='jaw'&&player.hp<25?1.4:1)}));
- let total=options.reduce((s,a)=>s+a.w,0),r=Math.random()*total;for(let it of options){r-=it.w;if(r<=0)return it.k}return 'jaw';}
-function selectAction(key){if(!game||game.busy||game.over||!MOVES[key])return; const activePlayer=mode==='local'?(game.pending?game.p2:game.p1):game.p1;if(activePlayer.kneelTurns>0)key='recover';else if(key==='recover')return; sound.init();if(mode==='local'&&!game.pending){game.pending=key;addLog('Игрок 1 выбрал приём. Ожидается второй игрок.');turnUI();return;}
- let p1=mode==='local'?game.pending:key,p2=mode==='local'?key:aiAction(game.p2,game.p1);game.pending=null;runRound(p1,p2);}
-function roll(f,d,key){const m=MOVES[key];if(m.utility)return {key,hit:false,damage:0,crit:false};let distance=Math.abs(f.x-d.x),stam=f.energy<m.cost;
- let accuracy=clamp(m.accuracy+f.aim-(d.cfg.archetype==='agile'?.048:0)-(stam?.16:0),.22,.98);
- if(distance>m.range)accuracy=0;
- const hit=Math.random()<accuracy,crit=hit&&Math.random()<m.crit;
- const shield=d.guard?.48:1;
- let damage=hit?Math.max(1,Math.round(rnd(...m.damage)*f.power*(crit?1.42:1)*(stam?.62:1)*shield/d.def)):0;
- return {key,hit,damage,crit,stam,far:distance>m.range,guarded:!!d.guard};}
-function makeAbrasion(target,key,damage,attacker){
- if(!damage)return;
- const amount=clamp(damage/26,.4,1.6), v=()=>rnd(-1,1);
- const mark=(type,zone,size,dx=0,dy=0)=>target.injuries.push({type,zone,size,dx,dy,seed:Math.random()*1000,rot:v()*.5});
- // Readable permanent injury locations. A jaw strike creates a black eye, an elbow a cheek abrasion.
- if(key==='jaw'){
-  mark('bruise','eye',.112*amount,rnd(-.009,.018),rnd(-.015,.015));
-  mark('scrape','cheek',.067*amount,rnd(-.018,.012),rnd(-.02,.01));
-  mark('blood','cheek',.069*amount,.035,-.025);
- }else if(key==='elbow'){
-  mark('scrape','cheek',.115*amount,v()*.023,v()*.030);
-  mark('blood','cheek',.072*amount,.025,-.046);
-  mark('bruise','eye',.069*amount,-.04,-.008);
- }else if(key==='knee'){
-  mark('fabric','shirt',.132*amount,v()*.12,v()*.14);
-  mark('scrape','shirt',.061*amount,.01,-.09);
- }else if(key==='sweep'||key==='tripthrow'){
-  mark('scrape','shin',.093*amount,v()*.04,v()*.06);
-  mark('fabric','pants',.073*amount,v()*.05,v()*.07);
-  if(key==='tripthrow')mark('fabric','shirt',.09*amount,.02,-.10);
- }else if(key==='hipthrow'){
-  mark('scrape','cheek',.072*amount,.02,-.02);
-  mark('fabric','shirt',.13*amount,v()*.1,v()*.1);
-  mark('scrape','arm',.071*amount,v()*.04,0);
- }
- const n=clamp(Math.round(damage/8),2,5);
- for(let i=0;i<n;i++)mark(i%3===0?'scrape':'fabric',i%3===0?'arm':'shirt',rnd(.023,.061)*amount,v()*.18,v()*.22);
- if(target.injuries.length>62)target.injuries.splice(0,target.injuries.length-62);
- if(attacker && ['jaw','elbow','knee','hipthrow','tripthrow'].includes(key))attacker.fistBlood=clamp(attacker.fistBlood+(key==='jaw'?2:1),0,12);
-}
-
-function applyMove(actor,defender,action){
- if(!game)return;const k=action.key,m=MOVES[k],r=action.roll;
- actor.energy=clamp(actor.energy-m.cost,0,100);
- if(m.utility){
-  if(k==='recover'){actor.kneelTurns=0;actor.kneelRound=-1;actor.energy=clamp(actor.energy+8,0,100);sound.play('step');addLog(actor.name+' поднимается с колена и возвращается в стойку.');}
-  else if(k==='stagger'){sound.play('step');addLog(actor.name+' не может контратаковать: опора потеряна.');}
-  else if(k==='guard'){actor.guard=true;actor.energy=clamp(actor.energy+13,0,100);sound.play('guard');addLog(actor.name+' закрывает голову и корпус.');}
-  else{const direction=k==='stepin'?1:-1;const nx=actor.x+actor.facing*direction*.58,dist=Math.abs(defender.x-nx);actor.x=clamp(nx,-3.25,3.25);if(dist<1.63)actor.x=defender.x-actor.facing*1.63;sound.play('step');addLog(actor.name+(k==='stepin'?' сокращает дистанцию.':' отступает и перестраивает стойку.'));}
-  hud();return;
- }
- if(!r.hit){sound.play('whiff');addLog(actor.name+': '+m.name.toLowerCase()+(r.far?' — слишком далеко.':' — промах.'));popNumber(defender,r.far?'ДАЛЕКО':'ПРОМАХ');hud();return;}
- defender.hp=Math.max(0,defender.hp-r.damage);
- defender.stumble=m.isThrow?1.0:0;defender.miss=(m.isSweep||m.isTrip)?.30:1;
- makeAbrasion(defender,k,r.damage,actor);
- if((m.isSweep||m.isTrip)&&defender.hp>0){defender.kneelTurns=1;defender.kneelRound=game.round;addLog(defender.name+' опускается на колено и теряет следующий ход.',true);announce('НА КОЛЕНЕ!',1);}
- if(m.isThrow){sound.play('grab');}
- else{sound.play(k==='jaw'?'punch':m.isTrip?'sweep':k);if(fight)fight.impact(defender.renderX,k==='sweep'||m.isTrip?'low':'hit');}
- if(fight){fight.shake=m.isThrow?.13:r.crit?.12:.075;fight.bloodSplash?.(defender.renderX,k,r.damage);}
- screenBlood(defender,r.damage);popNumber(defender,(r.crit?'КРИТ · ':'')+'−'+r.damage);
- addLog(actor.name+': '+m.name.toLowerCase()+' — '+r.damage+' урона.'+(r.crit?' КРИТ!':''),true);
- if(r.guarded)addLog(defender.name+' частично смягчает удар блоком.');hud();
-}
-function runAction(actor,defender,key){return new Promise(resolve=>{
- if(!game){resolve();return}if(actor.kneelTurns>0)key=actor.kneelRound===game.round?'stagger':'recover';const m=MOVES[key],r=roll(actor,defender,key);game.action={actor,defender,key,roll:r,start:performance.now(),duration:m.duration*1000,progress:0,hitTriggered:false,whoosh:false,hitstop:false,pauseUntil:0,landing:false,resolve,fromX:actor.x,toX:actor.x};
- if(key==='stepin'||key==='stepback'){const delta=actor.facing*(key==='stepin'?.58:-.58),dest=clamp(actor.x+delta,-3.25,3.25);game.action.toX=Math.abs(defender.x-dest)<1.63?defender.x-actor.facing*1.63:dest;}
- $('fightStatus').textContent=m.name.toUpperCase();
- });}
-async function runRound(a,b){const battle=game;if(!battle)return;battle.busy=true;turnUI();const f1=battle.p1,f2=battle.p2;
- // Prevent a protected opponent from retaining the previous round's guard forever.
- f1.guard=false;f2.guard=false;
- let order=[{att:f1,def:f2,key:a},{att:f2,def:f1,key:b}];order.sort((A,B)=>((B.att.speed*MOVES[B.key].speed)-(A.att.speed*MOVES[A.key].speed))+(Math.random()-.5)*.10);
- for(const step of order){if(game!==battle||battle.over)return;await runAction(step.att,step.def,step.key);if(game!==battle)return;if(step.def.hp<=0||step.att.hp<=0)break;}
- if(game!==battle)return;
- f1.energy=clamp(f1.energy+12,0,100);f2.energy=clamp(f2.energy+12,0,100);hud();
- if(f1.hp<=0||f2.hp<=0){startKO();return;}
- battle.round++;battle.busy=false;turnUI();}
-function startKO(){if(!game)return;game.koPending=true;game.koTime=0;game.action=null;game.over=true;game.busy=false;
- const f=game.p1.hp<=0?game.p1:game.p2;
- const alreadyThrown=f.stumble>.7;f.kneelTurns=0;f.kneelEase=0;f.ko={angle:alreadyThrown?1.05:0,angularVel:alreadyThrown?1.65:.72,drop:alreadyThrown?.70:0,dropVel:alreadyThrown?1.1:0,groundHit:false,time:0};
- $('fightStatus').textContent='НОКАУТ';sound.play('ko');announce('K.O.',1.5);addLog('НОКАУТ! '+f.name+' больше не может продолжать бой.',true);turnUI();}
-function completeKO(){if(!game||!game.koPending)return;game.koPending=false;let a=game.p1,b=game.p2;let winner=a.hp>0?a:b;
- const draw=a.hp<=0&&b.hp<=0;$('resultTitle').textContent=draw?'НИЧЬЯ':winner.side===1?'ПОБЕДА!':(mode==='ai'?'ПОРАЖЕНИЕ':'ПОБЕДА ИГРОКА 2');
- $('resultSubtitle').textContent=draw?'Оба бойца были нокаутированы.':winner.name+' победил. Раундов: '+game.round+'. Ссадины остались после ударов.';
- $('result').classList.add('show');}
-function frame(now){requestAnimationFrame(frame);const dt=Math.min(.05,Math.max(.003,(now-lastTime)/1000||.016)),t=now*.001;lastTime=now;
- if(!preview||!fight)return;
- if(screen==='setup'){
-  preview.start(t);preview.stage(t);let f={cfg:editing,side:1,facing:1,renderX:0,renderZ:0,scars:[],injuries:showPreviewDamage?[{type:'bruise',zone:'eye',size:.14,seed:12,dx:0,dy:0},{type:'scrape',zone:'cheek',size:.092,seed:29,dx:.016,dy:-.04},{type:'fabric',zone:'shirt',size:.15,seed:52,dx:.09,dy:.08},{type:'fabric',zone:'shirt',size:.088,seed:77,dx:-.14,dy:-.18},{type:'blood',zone:'cheek',size:.082,seed:61,dx:0,dy:-.09}]:[],fistBlood:showPreviewDamage?5:0,pose:{}};
-  preview.shadow(0,0,1);preview.drawFighter(f,t);preview.end();return;
- }
- if(!game)return;
- const battle=game,fs=[battle.p1,battle.p2];for(let f of fs){f.stumble=Math.max(0,f.stumble-dt*.78);f.miss=Math.max(0,f.miss-dt*2.5);let desiredKneel=f.kneelTurns?1:0;if(battle.action?.actor===f && battle.action.key==='recover')desiredKneel=1-smooth((battle.action.progress-.12)/.78);f.kneelEase=mix(f.kneelEase,desiredKneel,clamp(dt*7,0,1));f.pose={flinch:f.miss,guard:f.guard?1:0,kneel:f.kneelEase};f.renderX=mix(f.renderX,f.x,clamp(dt*9,0,1));
-  if(f.ko){let q=f.ko;q.time+=dt;q.angularVel+=5.8*dt;q.angle+=q.angularVel*dt;q.dropVel+=4.0*dt;q.drop+=q.dropVel*dt;
-   if(q.angle>=1.39){q.angle=1.39;q.angularVel=Math.max(0,-q.angularVel*.14)}
-   if(q.drop>=1.11){if(!q.groundHit){q.groundHit=true;sound.play('throw');fight.impact(f.renderX,'throw');}q.drop=1.11;q.dropVel=-q.dropVel*.13;if(Math.abs(q.dropVel)<.13)q.dropVel=0;}
-   f.pose.down=clamp(q.angle/1.39,0,1);f.pose.lift=-Math.max(0,q.drop-1.11)*.2;
-  }else if(f.stumble>0.05){f.pose.thrown=f.stumble;f.pose.lift=-.10*f.stumble;}
- }
- if(battle.action){const A=battle.action;let p=clamp((now-A.start)/A.duration,0,1);if(A.pauseUntil&&now<A.pauseUntil){A.start+=dt*1000;p=A.progress;}else{A.pauseUntil=0;}A.progress=p;
-  const striker=A.actor,def=A.defender,m=MOVES[A.key],isUtility=!!m.utility;
-  if(isUtility){if(A.key==='recover'){striker.pose.kneel=1-smooth((p-.10)/.72);striker.pose.guard=.3;}else if(A.key==='stagger'){striker.pose.kneel=1;striker.pose.guard=.3;}else if(A.key==='stepin'||A.key==='stepback'){striker.pose.moving=1;striker.pose.guard=.55;striker.renderX=mix(A.fromX,A.toX,smooth(p));}else if(A.key==='guard'){striker.pose.guard=1;}}
-  else {striker.pose.action=A.key;striker.pose.progress=p;const dist=Math.abs(striker.x-def.x);
-    const closeNeeded=Math.max(.38,dist-(m.isThrow?1.05:A.key==='jaw'?1.72:A.key==='sweep'?1.82:1.39));
-    const lunge=clamp(closeNeeded,m.isThrow?.58:.42,m.isThrow?1.28:1.32);
-    let step=smooth((p-.09)/.43)*(1-smooth((p-.70)/.29));striker.renderX=striker.x+striker.facing*lunge*step;
-    striker.pose.moving=.65*step;
-    if((m.isSweep||m.isTrip)&&A.roll.hit&&p>.48){const down=smooth((p-.48)/.25);def.pose.kneel=Math.max(def.pose.kneel,down);def.pose.flinch=.35*down;def.renderX=def.x+def.facing*.06*down;}
-    if(m.isThrow&&A.roll.hit&&p>.34){let pull=smooth((p-.33)/.26),fall=smooth((p-.52)/.37);
-      def.renderX=def.x-def.facing*(.40*pull + .16*fall);
-      def.pose.thrown=fall;def.pose.lift=.44*Math.sin(Math.PI*clamp((p-.40)/.55,0,1));
-      striker.pose.lean=-.13*pull;}
-    else if(A.roll.hit&&p>.51){let v=Math.sin(Math.PI*clamp((p-.51)/.42,0,1));def.pose.flinch=Math.max(def.pose.flinch,v*.8)}
-  }
-  if(p>.30&&!A.whoosh&&!isUtility){A.whoosh=true;sound.play(m.isThrow?'grab':'whoosh');}
-  if(p>=.57&&!A.hitTriggered){A.hitTriggered=true;applyMove(striker,def,A);if(cinematic&&!isUtility&&A.roll.hit){A.hitstop=true;A.pauseUntil=now+(m.isThrow?75:90);}}
-  if(m.isThrow && A.roll.hit && p>.80 && !A.landing){A.landing=true;sound.play('throw');if(fight)fight.impact(def.renderX,'throw');}
-  if(p>=1){if(!A.hitTriggered)applyMove(striker,def,A);if(A.key==='stepin'||A.key==='stepback')striker.renderX=striker.x;battle.action=null;A.resolve();}
- }
- if(battle.koPending){battle.koTime+=dt;if(battle.koTime>2.0)completeKO();}
- fight.shake*=Math.pow(.025,dt);const focusMove=battle.action;const filmLens=cinematic?(focusMove?(MOVES[focusMove.key].isThrow?.84:.28):battle.koPending?.68:0):0;fight.camDolly=mix(fight.camDolly,filmLens,clamp(dt*(filmLens>0?3.6:1.8),0,1));
- let focus=(fs[0].renderX+fs[1].renderX)*.5;fight.start(t,{focus});fight.stage(t);
- for(let f of fs)fight.shadow(f.renderX,f.renderZ,1.1,f.ko?.12:.34);
- for(let f of fs)fight.drawFighter(f,t);
- fight.effects(dt);fight.end();hud();
- if(battle.announcerTime>0){battle.announcerTime-=dt;if(battle.announcerTime<=0)$('announcer').classList.remove('visible');}
-}
-// Editor and gameplay input
-for(let id of ['class','build','hair','outfit'])$(id).addEventListener('change',e=>{editing[id==='class'?'archetype':id]=e.target.value;renderSetup()});
-$('name').addEventListener('input',e=>{editing.name=e.target.value.toUpperCase().slice(0,14);$('previewName').textContent=editing.name||'БОЕЦ'});
-$('name').addEventListener('change',()=>{editing.name=editing.name.trim()||'БОЕЦ';renderSetup()});
-document.addEventListener('click',e=>{
- const sw=e.target.closest('[data-color-key]');if(sw){editing[sw.dataset.colorKey]=sw.dataset.colorValue;renderSetup();}
- const mo=e.target.closest('[data-mode]');if(mo&&editorIndex===0){mode=mo.dataset.mode;renderSetup();}
- const a=e.target.closest('[data-action]');if(a&&screen==='battle')selectAction(a.dataset.action);
-});
-$('startBtn').addEventListener('click',()=>{sound.init();editing.name=(editing.name||'БОЕЦ').trim().toUpperCase().slice(0,14)||'БОЕЦ';
- if(mode==='local'&&editorIndex===0){chosen[0]=clone(editing);editorIndex=1;editing=clone(P2);renderSetup();window.scrollTo({top:0,behavior:'smooth'});return;}
- if(editorIndex===1){chosen[1]=clone(editing);}else{chosen[0]=clone(editing);chosen[1]=mode==='ai'?clone(P2):clone(editing);}startBattle();});
-function backToEditor(){if(game?.action){let a=game.action;game.action=null;a.resolve();}game=null;editorIndex=0;editing=clone(chosen[0]||P1);$('result').classList.remove('show');renderSetup();showScreen('setup');}
-$('backBtn').addEventListener('click',backToEditor);$('recreateBtn').addEventListener('click',backToEditor);$('rematchBtn').addEventListener('click',()=>{sound.init();startBattle()});
-$('damagePreviewBtn')?.addEventListener('click',()=>{showPreviewDamage=!showPreviewDamage;const el=$('damagePreviewBtn');el.setAttribute('aria-pressed',String(showPreviewDamage));el.textContent=showPreviewDamage?'◎ СКРЫТЬ ПОВРЕЖДЕНИЯ':'◉ ПОКАЗАТЬ ФИНГАЛ И КРОВЬ';});
-$('soundBtn').addEventListener('click',()=>{muted=!muted;sound.enabled=!muted;$('soundBtn').setAttribute('aria-pressed',String(!muted));$('soundBtn').textContent=muted?'♫ ЗВУК ВЫКЛ':'♫ ЗВУК ВКЛ';if(!muted)sound.play('bell')});
-$('cameraBtn').addEventListener('click',()=>{cinematic=!cinematic;const btn=$('cameraBtn');btn.setAttribute('aria-pressed',String(cinematic));btn.textContent=cinematic?'◉ КИНОКАМЕРА':'◎ СТАТИЧНАЯ КАМЕРА';if(fight)fight.camDolly=0;});
-document.addEventListener('keydown',e=>{if(screen!=='battle'||e.target.closest('input,select,textarea')||e.altKey||e.ctrlKey||e.metaKey)return;
- const table={'1':'jaw','2':'elbow','3':'knee','4':'sweep','5':'hipthrow','6':'tripthrow',a:'stepback',A:'stepback',ArrowLeft:'stepback',d:'stepin',D:'stepin',ArrowRight:'stepin',' ':'guard'};
- if(table[e.key]){e.preventDefault();selectAction(table[e.key]);}});
-// Read-only QA hooks. Gameplay controls remain through the normal UI.
-window.KontaktState=()=>game?{round:game.round,busy:game.busy,over:game.over,p1:{hp:game.p1.hp,kneel:game.p1.kneelTurns,injuries:game.p1.injuries.length,fistBlood:game.p1.fistBlood},p2:{hp:game.p2.hp,kneel:game.p2.kneelTurns,injuries:game.p2.injuries.length,fistBlood:game.p2.fistBlood}}:null;
-renderSetup();initRenderers();requestAnimationFrame(frame);
-})();
+"use strict";
+var Kontakt;
+(function (Kontakt) {
+    Kontakt.MOVES = {
+        jaw: { label: 'В ЧЕЛЮСТЬ', detail: 'Прямой в голову', damage: [17, 25], cost: 18, chance: .79, reach: 465, speed: 7, target: 'head', pose: 'jaw' },
+        elbow: { label: 'ЛОКТЕМ', detail: 'Ближняя дистанция', damage: [14, 21], cost: 15, chance: .86, reach: 320, speed: 8, target: 'head', pose: 'elbow' },
+        knee: { label: 'КОЛЕНОМ', detail: 'Удар в корпус', damage: [18, 26], cost: 22, chance: .76, reach: 330, speed: 6, target: 'body', pose: 'knee' },
+        sweep: { label: 'ПОДСЕЧКА', detail: 'Опустить на колено', damage: [7, 12], cost: 17, chance: .83, reach: 355, speed: 5, target: 'leg', pose: 'sweep' },
+        throw: { label: 'БРОСОК', detail: 'Нужен близкий контакт', damage: [19, 27], cost: 27, chance: .71, reach: 255, speed: 4, target: 'body', pose: 'sweep' },
+        guard: { label: 'БЛОК', detail: 'Снижает получаемый урон', damage: [0, 0], cost: 0, chance: 1, reach: 0, speed: 10, target: 'none', pose: 'idle' },
+        approach: { label: 'ШАГ ВПЕРЁД', detail: 'Сократить дистанцию', damage: [0, 0], cost: 0, chance: 1, reach: 0, speed: 12, target: 'none', pose: 'idle' },
+        retreat: { label: 'ОТСТУПИТЬ', detail: 'Увеличить дистанцию', damage: [0, 0], cost: 0, chance: 1, reach: 0, speed: 12, target: 'none', pose: 'idle' },
+        recover: { label: 'ПОДНЯТЬСЯ', detail: 'Вернуться в стойку', damage: [0, 0], cost: 0, chance: 1, reach: 0, speed: 13, target: 'none', pose: 'kneel' }
+    };
+    function fighter(id, name, kit, build) {
+        const hp = build === 'power' ? 118 : build === 'slim' ? 94 : 106;
+        return { id, name, kit, build, x: id === 0 ? 402 : 878, facing: id === 0 ? 1 : -1, hp, maxHp: hp, stamina: 100, guard: false, kneelTurns: 0,
+            pose: 'idle', offsetX: 0, offsetY: 0, scaleX: 1, angle: 0, blood: 0, shirtBlood: 0, gloveBlood: 0, faceBlood: 0,
+            bruises: 0, abrasions: 0, hurt: 0, down: false };
+    }
+    Kontakt.fighter = fighter;
+    function newBattle(mode, hero, enemy) {
+        return { fighters: [fighter(0, hero.name, hero.kit, hero.build), fighter(1, enemy.name, enemy.kit, enemy.build)],
+            round: 1, mode, busy: false, over: false, winner: null, pending: null, eventLog: ['Соперники вышли на арену.'] };
+    }
+    Kontakt.newBattle = newBattle;
+    function clamp(v, a, b) { return Math.max(a, Math.min(b, v)); }
+    Kontakt.clamp = clamp;
+    function distance(a, b) { return Math.abs(a.x - b.x); }
+    Kontakt.distance = distance;
+    function chooseBot(bot, player) {
+        if (bot.kneelTurns > 0)
+            return 'recover';
+        const dist = distance(bot, player), r = Math.random();
+        if (dist > 420)
+            return 'approach';
+        if (bot.hp < 28 && r < .18)
+            return 'retreat';
+        if (bot.stamina < 20)
+            return r < .55 ? 'guard' : 'approach';
+        if (dist < 235 && r < .21)
+            return 'throw';
+        if (dist < 315 && r < .38)
+            return 'elbow';
+        if (dist < 355 && r < .51)
+            return 'sweep';
+        return r < .55 ? 'jaw' : r < .82 ? 'knee' : 'guard';
+    }
+    Kontakt.chooseBot = chooseBot;
+    function initiative(f, m) { return Kontakt.MOVES[m].speed + (f.build === 'slim' ? 1.1 : 0) + Math.random() * 1.5; }
+    Kontakt.initiative = initiative;
+    function roll(f, def, m) {
+        const d = Kontakt.MOVES[m];
+        if (m === 'guard')
+            return { hit: false, damage: 0, crit: false, blocked: false, interrupted: false, message: `${f.name} ставит блок.`, target: 'none', knockdown: false };
+        if (m === 'recover')
+            return { hit: false, damage: 0, crit: false, blocked: false, interrupted: false, message: `${f.name} поднимается и возвращает стойку.`, target: 'none', knockdown: false };
+        if (m === 'approach' || m === 'retreat')
+            return { hit: false, damage: 0, crit: false, blocked: false, interrupted: false, message: `${f.name} ${m === 'approach' ? 'сближается' : 'отступает'}.`, target: 'none', knockdown: false };
+        const dist = distance(f, def);
+        if (dist > d.reach)
+            return { hit: false, damage: 0, crit: false, blocked: false, interrupted: false, message: `${f.name}: слишком далеко для «${d.label.toLowerCase()}»!`, target: d.target, knockdown: false };
+        const tired = f.stamina < d.cost;
+        const hitChance = clamp(d.chance - (tired ? .19 : 0) - (def.guard ? .13 : 0) + (def.kneelTurns > 0 ? .12 : 0), .2, .98);
+        const hit = Math.random() < hitChance;
+        const crit = hit && Math.random() < (.08 + (m === 'jaw' ? .12 : 0));
+        const base = d.damage[0] + Math.random() * (d.damage[1] - d.damage[0]);
+        let damage = hit ? Math.round(base * (crit ? 1.45 : 1) * (f.build === 'power' ? 1.13 : 1) * (tired ? .65 : 1) * (def.guard ? .40 : 1)) : 0;
+        const knockdown = hit && m === 'sweep';
+        let message = hit ? `${f.name}: ${d.label.toLowerCase()} — ${damage} урона${crit ? ' · КРИТ!' : ''}${def.guard ? ' · БЛОК' : ''}.` : `${f.name}: ${d.label.toLowerCase()} — промах.`;
+        if (knockdown)
+            message += ` ${def.name} опускается на колено!`;
+        return { hit, damage, crit, blocked: !!def.guard, interrupted: false, message, target: d.target, knockdown };
+    }
+    Kontakt.roll = roll;
+    function apply(state, actor, def, m, o) {
+        if (m === 'guard') {
+            actor.guard = true;
+            actor.stamina = clamp(actor.stamina + 16, 0, 100);
+            return;
+        }
+        if (m === 'recover') {
+            actor.kneelTurns = 0;
+            actor.pose = 'idle';
+            actor.stamina = clamp(actor.stamina + 15, 0, 100);
+            return;
+        }
+        if (m === 'approach' || m === 'retreat') {
+            const step = m === 'approach' ? 85 : -75;
+            const sign = Math.sign(def.x - actor.x);
+            let nx = actor.x + sign * step;
+            if (m === 'approach')
+                nx = actor.x + sign * Math.min(85, Math.max(0, distance(actor, def) - 195));
+            actor.x = clamp(nx, 215, 1065);
+            actor.stamina = clamp(actor.stamina + 10, 0, 100);
+            return;
+        }
+        actor.stamina = clamp(actor.stamina - Kontakt.MOVES[m].cost, 0, 100);
+        if (!o.hit)
+            return;
+        def.hp = Math.max(0, def.hp - o.damage);
+        def.hurt = 1;
+        def.blood += 1;
+        def.shirtBlood = clamp(def.shirtBlood + (m === 'knee' || m === 'throw' ? 3 : 2), 0, 14);
+        def.faceBlood = clamp(def.faceBlood + (m === 'jaw' || m === 'elbow' ? 3 : 1), 0, 14);
+        if (m === 'elbow' || m === 'throw')
+            def.abrasions = clamp(def.abrasions + 2, 0, 12);
+        if (m === 'jaw')
+            def.bruises = clamp(def.bruises + 1, 0, 9);
+        actor.gloveBlood = clamp(actor.gloveBlood + (m === 'jaw' || m === 'elbow' ? 4 : 2), 0, 14);
+        if (m === 'sweep') {
+            def.kneelTurns = 1;
+            def.pose = 'kneel';
+        }
+        if (def.hp <= 0) {
+            def.down = true;
+            def.kneelTurns = 0;
+        }
+    }
+    Kontakt.apply = apply;
+})(Kontakt || (Kontakt = {}));
+var Kontakt;
+(function (Kontakt) {
+    class AudioFX {
+        constructor() {
+            this.ctx = null;
+            this.enabled = true;
+        }
+        init() { if (!this.enabled)
+            return; try {
+            if (!this.ctx) {
+                const AC = window.AudioContext || window.webkitAudioContext;
+                this.ctx = AC ? new AC() : null;
+            }
+            void this.ctx?.resume();
+        }
+        catch (e) {
+            console.warn(e);
+        } }
+        toggle() { this.enabled = !this.enabled; if (this.enabled)
+            this.init(); return this.enabled; }
+        tone(f, d, type, vol = .07, end) {
+            const c = this.ctx;
+            if (!this.enabled || !c)
+                return;
+            const osc = c.createOscillator(), g = c.createGain(), now = c.currentTime;
+            osc.type = type;
+            osc.frequency.setValueAtTime(f, now);
+            osc.frequency.exponentialRampToValueAtTime(end || Math.max(40, f * .4), now + d);
+            g.gain.setValueAtTime(vol, now);
+            g.gain.exponentialRampToValueAtTime(.0001, now + d);
+            osc.connect(g).connect(c.destination);
+            osc.start(now);
+            osc.stop(now + d + .02);
+        }
+        noise(d = .16, vol = .12, cutoff = 900) {
+            const c = this.ctx;
+            if (!c || !this.enabled)
+                return;
+            const len = Math.ceil(c.sampleRate * d), buf = c.createBuffer(1, len, c.sampleRate), a = buf.getChannelData(0);
+            for (let i = 0; i < len; i++)
+                a[i] = (Math.random() * 2 - 1) * (1 - i / len);
+            const src = c.createBufferSource(), filter = c.createBiquadFilter(), g = c.createGain();
+            src.buffer = buf;
+            filter.type = 'lowpass';
+            filter.frequency.value = cutoff;
+            g.gain.value = vol;
+            src.connect(filter).connect(g).connect(c.destination);
+            src.start();
+            src.stop(c.currentTime + d);
+        }
+        move(kind) {
+            if (!this.enabled)
+                return;
+            if (kind === 'guard') {
+                this.tone(250, .1, 'triangle', .045, 130);
+                return;
+            }
+            if (kind === 'approach' || kind === 'retreat' || kind === 'recover') {
+                this.noise(.075, .035, 450);
+                return;
+            }
+            this.noise(.15, .05, 1800);
+        }
+        hit(crit = false) { this.noise(crit ? .36 : .23, crit ? .27 : .19, crit ? 640 : 850); this.tone(crit ? 190 : 160, .21, 'sawtooth', crit ? .14 : .1, 49); }
+        miss() { this.noise(.09, .02, 2000); }
+        finish() { this.tone(130, .55, 'sawtooth', .16, 42); this.noise(.54, .08, 390); }
+    }
+    Kontakt.AudioFX = AudioFX;
+})(Kontakt || (Kontakt = {}));
+var Kontakt;
+(function (Kontakt) {
+    function assetUrl(name) { return (window.__KONTAKT_ASSETS__ || {})[name] || 'assets/' + name; }
+    Kontakt.assetUrl = assetUrl;
+    const P = {
+        idle: { face: [281, 106], shirt: [244, 217], glove: [344, 139], leg: [209, 357] },
+        jaw: { face: [203, 120], shirt: [213, 216], glove: [424, 125], leg: [221, 345] },
+        elbow: { face: [270, 101], shirt: [244, 204], glove: [394, 137], leg: [300, 358] },
+        knee: { face: [229, 93], shirt: [228, 197], glove: [296, 127], leg: [253, 365] },
+        sweep: { face: [204, 248], shirt: [246, 321], glove: [102, 451], leg: [384, 431] },
+        kneel: { face: [308, 264], shirt: [316, 362], glove: [281, 455], leg: [357, 460] }
+    };
+    function rnd(i, s) { const v = Math.sin(i * 39.135 + s * 78.3) * 45758.55; return v - Math.floor(v); }
+    function ellipse(ctx, x, y, rx, ry, color, rot = 0) { ctx.beginPath(); ctx.ellipse(x, y, Math.max(.1, rx), Math.max(.1, ry), rot, 0, Math.PI * 2); ctx.fillStyle = color; ctx.fill(); }
+    class ArenaView {
+        constructor(host) {
+            this.game = null;
+            this.scene = null;
+            this.mode = 'canvas';
+            this.stageImg = new Image();
+            this.images = {};
+            this.sprites = [];
+            this.shadows = [];
+            this.spots = [];
+            this.particles = [];
+            this.shake = 0;
+            this.flash = 0;
+            this.last = 0;
+            this.state = null;
+            this.ready = false;
+            this.W = 1280;
+            this.H = 720;
+            this.host = host;
+            this.canvas = document.createElement('canvas');
+            this.canvas.width = this.W;
+            this.canvas.height = this.H;
+            this.canvas.className = 'arena-render';
+            this.fxCanvas = document.createElement('canvas');
+            this.fxCanvas.width = this.W;
+            this.fxCanvas.height = this.H;
+            this.fxCanvas.className = 'arena-effects';
+            this.ctx = this.canvas.getContext('2d', { alpha: false });
+            this.fx = this.fxCanvas.getContext('2d');
+            const ph = window.Phaser;
+            if (ph) {
+                try {
+                    this.initPhaser(ph);
+                    return;
+                }
+                catch (e) {
+                    console.warn('WebGL/Phaser unavailable, switching to canvas', e);
+                    this.host.innerHTML = '';
+                }
+            }
+            this.initCanvas();
+        }
+        initCanvas() {
+            this.mode = 'canvas';
+            this.host.appendChild(this.canvas);
+            this.ready = true;
+            this.stageImg.src = assetUrl('arena.webp');
+            for (const kit of ['a', 'b'])
+                for (const pose of ['idle', 'jaw', 'elbow', 'knee', 'sweep', 'kneel']) {
+                    const im = new Image();
+                    this.images[`${kit}_${pose}`] = im;
+                    im.src = assetUrl(`fighter_${kit}_${pose}.webp`);
+                }
+        }
+        initPhaser(Phaser) {
+            const self = this;
+            this.mode = 'phaser';
+            this.game = new Phaser.Game({ type: Phaser.AUTO, width: 1280, height: 720, parent: this.host,
+                backgroundColor: '#0b121b', antialias: true, pixelArt: false, transparent: false,
+                scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH, width: 1280, height: 720 },
+                scene: { preload: function () {
+                        this.load.image('arena', assetUrl('arena.webp'));
+                        for (const k of ['a', 'b'])
+                            for (const pose of ['idle', 'jaw', 'elbow', 'knee', 'sweep', 'kneel'])
+                                this.load.image(`${k}_${pose}`, assetUrl(`fighter_${k}_${pose}.webp`));
+                    }, create: function () {
+                        self.scene = this;
+                        this.add.image(640, 360, 'arena').setDisplaySize(1280, 720).setDepth(0);
+                        for (let i = 0; i < 2; i++) {
+                            const sh = this.add.ellipse(0, 658, 260, 32, 0x080e13, .56).setDepth(1);
+                            self.shadows.push(sh);
+                            const image = this.add.image(0, 666, 'a_idle').setOrigin(.5, 1).setDepth(2 + i);
+                            self.sprites.push(image);
+                        }
+                        self.host.appendChild(self.fxCanvas);
+                        self.ready = true;
+                    }, update: function () { } } });
+        }
+        reset() { this.spots = []; this.particles = []; this.flash = 0; this.shake = 0; }
+        impact(def, kind, hit, crit = false) {
+            if (!hit)
+                return;
+            const y = kind === 'head' ? 338 : kind === 'body' ? 467 : 577;
+            const x = def.x + def.facing * 30;
+            this.shake = crit ? 17 : 10;
+            this.flash = crit ? .21 : .10;
+            const n = crit ? 36 : 24;
+            for (let i = 0; i < n; i++) {
+                const a = Math.random() * Math.PI * 1.6 + (def.facing === 1 ? -Math.PI * .8 : -Math.PI * .35), v = 2 + Math.random() * 9;
+                this.particles.push({ x, y, vx: Math.cos(a) * v, vy: -3 + Math.sin(a) * v, r: 1.2 + Math.random() * 3.5, life: 60 + Math.random() * 35, max: 90, red: true });
+            }
+            for (let i = 0; i < 5; i++)
+                this.spots.push({ x: def.x + Math.random() * 160 - 80, y: 660 + Math.random() * 48, rx: 3 + Math.random() * 18, ry: 2 + Math.random() * 4, rot: Math.random(), alpha: .33 + Math.random() * .36 });
+            if (this.spots.length > 170)
+                this.spots.splice(0, 30);
+        }
+        woundOverlay(ctx, f) {
+            const s = P[f.pose];
+            ctx.save();
+            ctx.translate(f.x + f.offsetX, f.down ? Math.min(700, 666 + f.offsetY) : 666 + f.offsetY);
+            ctx.rotate(f.angle);
+            ctx.scale(f.facing * (f.build === 'power' ? 1.06 : f.build === 'slim' ? .93 : 1), 1);
+            ctx.translate(-232, -465);
+            ctx.scale(464 / 512, 465 / 512);
+            // orbital bruising - purple under visible eye, naturally layered into face
+            for (let j = 0; j < f.bruises; j++) {
+                const a = .19 + Math.min(.19, f.bruises * .04);
+                ellipse(ctx, s.face[0] + 7 + j * .38, s.face[1] + 8, 18 + j * .8, 12 + j * .5, `rgba(49,20,83,${a})`, .08);
+                ellipse(ctx, s.face[0] + 6, s.face[1] + 6, 8, 6, `rgba(66,33,101,${.22 + f.bruises * .035})`);
+            }
+            // superficial abrasions and reddish scratches
+            for (let i = 0; i < f.abrasions; i++) {
+                const x = s.face[0] - 6 + rnd(i, 2) * 28, y = s.face[1] + 11 + rnd(i, 6) * 23;
+                ctx.strokeStyle = 'rgba(141,32,45,.72)';
+                ctx.lineWidth = 1.8 + rnd(i, 1) * 1.7;
+                ctx.beginPath();
+                ctx.moveTo(x, y);
+                ctx.lineTo(x + 5 + rnd(i, 4) * 7, y + 3 + rnd(i, 8) * 7);
+                ctx.stroke();
+            }
+            // chin blood, streaks accumulate and drip
+            for (let i = 0; i < f.faceBlood; i++) {
+                const x = s.face[0] - 2 + rnd(i, 17) * 21, y = s.face[1] + 17 + rnd(i, 5) * 10;
+                ellipse(ctx, x, y, 2.8 + rnd(i, 3) * 3.1, 7 + rnd(i, 6) * 13, `rgba(155,19,31,${.5 + rnd(i, 9) * .32})`, rnd(i, 21) * .25);
+            }
+            // fabric stains with distinct pools and fine spatter
+            for (let i = 0; i < f.shirtBlood; i++) {
+                const x = s.shirt[0] - 40 + rnd(i, 12) * 76, y = s.shirt[1] - 45 + rnd(i, 24) * 88;
+                ellipse(ctx, x, y, 8 + rnd(i, 21) * 15, 5 + rnd(i, 22) * 9, `rgba(104,12,23,${.43 + rnd(i, 42) * .31})`, rnd(i, 5) * 1.8);
+                if (i % 2 === 0)
+                    ellipse(ctx, x + 8, y + 6, 3, 4 + rnd(i, 3) * 5, 'rgba(189,34,44,.40)');
+            }
+            // blood on wrapped hands
+            for (let i = 0; i < f.gloveBlood; i++) {
+                const x = s.glove[0] - 11 + rnd(i, 7) * 23, y = s.glove[1] - 10 + rnd(i, 14) * 20;
+                ellipse(ctx, x, y, 2.7 + rnd(i, 4) * 4, 3 + rnd(i, 8) * 5, `rgba(151,15,27,${.56 + rnd(i, 99) * .27})`);
+            }
+            ctx.restore();
+        }
+        drawGround(ctx) {
+            for (const s of this.spots) {
+                ellipse(ctx, s.x, s.y, s.rx, s.ry, `rgba(112,9,20,${s.alpha})`, s.rot);
+            }
+        }
+        drawParticles(ctx, dt) {
+            for (const p of this.particles) {
+                p.life -= dt * .08;
+                p.x += p.vx * dt / 16.7;
+                p.y += p.vy * dt / 16.7;
+                p.vy += .35 * dt / 16.7;
+                if (p.y > 680 && p.vy > 0) {
+                    p.life = 0;
+                    this.spots.push({ x: p.x, y: Math.min(708, p.y), rx: p.r * 2, ry: 1 + rnd(p.x, 9) * 2, rot: 0, alpha: .28 });
+                }
+                if (p.life > 0)
+                    ellipse(ctx, p.x, p.y, p.r, p.r * .85, `rgba(177,16,30,${Math.min(.9, p.life / 75)})`);
+            }
+            this.particles = this.particles.filter(x => x.life > 0 && x.x > 0 && x.x < 1280);
+        }
+        frame(state, t) {
+            this.state = state;
+            const dt = Math.min(34, t - (this.last || t));
+            this.last = t;
+            if (!this.ready)
+                return;
+            if (this.mode === 'phaser') {
+                const sc = this.scene;
+                for (const i of [0, 1]) {
+                    const f = state.fighters[i], sprite = this.sprites[i];
+                    if (!sprite)
+                        continue;
+                    const key = `${f.kit}_${f.pose}`;
+                    if (sprite.texture.key !== key)
+                        sprite.setTexture(key);
+                    sprite.setPosition(f.x + f.offsetX, 666 + f.offsetY);
+                    const w = 464 * (f.build === 'power' ? 1.06 : f.build === 'slim' ? .93 : 1);
+                    sprite.setDisplaySize(w, 465);
+                    sprite.setFlipX(f.facing === -1);
+                    sprite.setRotation(f.angle);
+                    this.shadows[i].setPosition(f.x + f.offsetX, 662).setAlpha(f.down ? .2 : .56);
+                }
+                const fx = this.fx;
+                fx.setTransform(1, 0, 0, 1, 0, 0);
+                fx.clearRect(0, 0, 1280, 720);
+                if (this.shake > 1) {
+                    sc.cameras.main.setScroll(Math.sin(t * .07) * this.shake * .2, Math.cos(t * .11) * this.shake * .1);
+                }
+                else
+                    sc.cameras.main.setScroll(0, 0);
+                this.drawGround(fx);
+                for (const f of state.fighters)
+                    this.woundOverlay(fx, f);
+                this.drawParticles(fx, dt);
+                if (this.flash > .01) {
+                    fx.fillStyle = `rgba(255,237,212,${this.flash})`;
+                    fx.fillRect(0, 0, 1280, 720);
+                }
+            }
+            else {
+                const ctx = this.ctx;
+                ctx.clearRect(0, 0, 1280, 720);
+                ctx.save();
+                ctx.translate((Math.random() - .5) * this.shake, (Math.random() - .5) * this.shake * .55);
+                if (this.stageImg.complete && this.stageImg.naturalWidth)
+                    ctx.drawImage(this.stageImg, 0, 0, 1280, 720);
+                else {
+                    ctx.fillStyle = '#15242d';
+                    ctx.fillRect(0, 0, 1280, 720);
+                }
+                this.drawGround(ctx);
+                for (const f of state.fighters) {
+                    const width = 464 * (f.build === 'power' ? 1.06 : f.build === 'slim' ? .93 : 1);
+                    ellipse(ctx, f.x + f.offsetX, 668, 115, .12 * width, 'rgba(3,8,12,.42)');
+                    ctx.save();
+                    ctx.translate(f.x + f.offsetX, 666 + f.offsetY);
+                    ctx.rotate(f.angle);
+                    ctx.scale(f.facing, 1);
+                    const img = this.images[`${f.kit}_${f.pose}`];
+                    if (img?.complete && img.naturalWidth)
+                        ctx.drawImage(img, -width / 2, -465, width, 465);
+                    ctx.restore();
+                    this.woundOverlay(ctx, f);
+                }
+                this.drawParticles(ctx, dt);
+                if (this.flash > .01) {
+                    ctx.fillStyle = `rgba(255,237,212,${this.flash})`;
+                    ctx.fillRect(0, 0, 1280, 720);
+                }
+                ctx.restore();
+            }
+            this.shake *= .83;
+            this.flash *= .77;
+        }
+    }
+    Kontakt.ArenaView = ArenaView;
+})(Kontakt || (Kontakt = {}));
+var Kontakt;
+(function (Kontakt) {
+    const q = (selector) => document.querySelector(selector);
+    const stage = q('#stage');
+    const view = new Kontakt.ArenaView(stage);
+    const audio = new Kontakt.AudioFX();
+    let battle = Kontakt.newBattle('ai', { name: 'РЭЙНА', kit: 'a', build: 'athletic' }, { name: 'СЭЙБЛ', kit: 'b', build: 'power' });
+    let selectedKit = 'a', selectedBuild = 'athletic', selectedMode = 'ai';
+    let roundRunning = false;
+    let hitStopMs = 92;
+    function say(message, highlight = false) {
+        const area = q('#combatLog');
+        const n = document.createElement('div');
+        n.className = 'log-entry' + (highlight ? ' hot' : '');
+        n.textContent = message;
+        area.prepend(n);
+        while (area.children.length > 8)
+            area.lastElementChild?.remove();
+    }
+    function setBar(id, pct) { const e = q(id); e.style.width = Kontakt.clamp(pct, 0, 100) + '%'; }
+    function setText(id, t) { q(id).textContent = t; }
+    function updateHUD() {
+        const [p1, p2] = battle.fighters;
+        for (const [f, i] of [[p1, 1], [p2, 2]]) {
+            setText(`#name${i}`, f.name);
+            setText(`#hpText${i}`, `${f.hp} / ${f.maxHp}`);
+            setText(`#stText${i}`, `${Math.round(f.stamina)} EN`);
+            setBar(`#hp${i}`, 100 * f.hp / f.maxHp);
+            setBar(`#st${i}`, f.stamina);
+            setText(`#damage${i}`, f.bruises + f.abrasions + f.faceBlood > 0 ? `ТРАВМЫ · ${f.bruises} СИН. / ${f.abrasions} ССАД.` : 'БЕЗ ПОВРЕЖДЕНИЙ');
+        }
+        setText('#round', String(battle.round).padStart(2, '0'));
+        setText('#distance', `${Math.round(Kontakt.distance(p1, p2))} PX`);
+        setText('#modeLabel', battle.mode === 'ai' ? 'VS CPU' : '2 ИГРОКА');
+        const kneeler = p1.kneelTurns > 0 ? p1 : p2.kneelTurns > 0 ? p2 : null;
+        const status = battle.over ? 'БОЙ ЗАВЕРШЁН' : kneeler ? `${kneeler.name}: НА КОЛЕНЕ` : (battle.busy ? 'ОБМЕН УДАРАМИ' : 'ВЫБЕРИ ПРИЁМ');
+        setText('#statusText', status);
+    }
+    function updateButtons() {
+        const active = battle.mode === 'local' && battle.pending ? battle.fighters[1] : battle.fighters[0];
+        const kneeling = active.kneelTurns > 0;
+        document.querySelectorAll('[data-move]').forEach(b => {
+            b.disabled = battle.busy || battle.over || (kneeling && b.dataset.move !== 'recover') || (!kneeling && b.dataset.move === 'recover');
+        });
+        const recover = q('#recoverButton');
+        recover.hidden = !kneeling;
+        const turn = battle.mode === 'local' && battle.pending ? 'ИГРОК 2' : battle.mode === 'local' ? 'ИГРОК 1' : 'ТВОЙ ХОД';
+        setText('#turnActor', kneeling ? 'ВОССТАНОВЛЕНИЕ СТОЙКИ' : turn);
+        setText('#turnHelp', kneeling ? `${active.name} потерял равновесие. Подъём занимает весь ход.` :
+            battle.mode === 'local' && battle.pending ? 'Приём первого игрока скрыт. Выбери ответ.' : 'Выбери удар, защиту или движение.');
+        updateHUD();
+    }
+    function resetBattle() {
+        const name = (q('#fighterName').value || 'РЭЙНА').trim().slice(0, 16) || 'РЭЙНА';
+        const rivalKit = selectedKit === 'a' ? 'b' : 'a';
+        battle = Kontakt.newBattle(selectedMode, { name, kit: selectedKit, build: selectedBuild }, { name: rivalKit === 'b' ? 'СЭЙБЛ' : 'РЭЙНА', kit: rivalKit, build: 'power' });
+        audio.init();
+        view.reset();
+        roundRunning = false;
+        q('#intro').classList.add('is-hidden');
+        q('#gameOver').classList.add('is-hidden');
+        q('#combatLog').replaceChildren();
+        say('Бойцы на арене. Первый раунд.');
+        updateButtons();
+    }
+    const delay = (ms) => new Promise(r => window.setTimeout(r, ms));
+    function animate(duration, onUpdate) {
+        return new Promise(resolve => { const t0 = performance.now(); function tick(now) { const p = Kontakt.clamp((now - t0) / duration, 0, 1); onUpdate(p); if (p >= 1)
+            resolve();
+        else
+            requestAnimationFrame(tick); } requestAnimationFrame(tick); });
+    }
+    function approachTarget(a, b, move) {
+        const step = move === 'approach' ? Math.min(85, Math.max(0, Kontakt.distance(a, b) - 195)) : -75;
+        return Kontakt.clamp(a.x + Math.sign(b.x - a.x) * step, 215, 1065);
+    }
+    async function playAction(actor, def, move) {
+        const data = Kontakt.MOVES[move];
+        const result = Kontakt.roll(actor, def, move);
+        const startX = actor.x, endX = (move === 'approach' || move === 'retreat') ? approachTarget(actor, def, move) : startX;
+        let contacted = false;
+        const dur = move === 'sweep' ? 880 : move === 'throw' ? 920 : move === 'recover' ? 650 : move === 'guard' ? 510 : move === 'approach' || move === 'retreat' ? 550 : 760;
+        const lunge = (move === 'jaw' ? 88 : move === 'elbow' ? 52 : move === 'knee' ? 52 : move === 'sweep' ? 70 : move === 'throw' ? 76 : 0);
+        audio.move(move);
+        await animate(dur + (result.hit ? hitStopMs : 0), (r) => {
+            const p = r >= .53 ? Math.max(0, (r * dur + hitStopMs) / (dur + hitStopMs)) : r * (dur + hitStopMs) / dur;
+            const z = Kontakt.clamp(p, 0, 1);
+            actor.pose = (z > .18 && z < .77) ? data.pose : (actor.kneelTurns > 0 ? 'kneel' : 'idle');
+            if (move === 'recover')
+                actor.pose = z < .6 ? 'kneel' : 'idle';
+            if (move === 'guard')
+                actor.pose = 'idle';
+            if (move === 'approach' || move === 'retreat')
+                actor.offsetX = (endX - startX) * (z * z * (3 - 2 * z));
+            else
+                actor.offsetX = Math.sign(def.x - actor.x) * lunge * Math.sin(Math.PI * Kontakt.clamp((z - .1) / .78, 0, 1));
+            actor.offsetY = (move === 'knee' ? -5 * Math.sin(Math.PI * z) : move === 'sweep' ? 28 * Math.sin(Math.PI * z) : 0);
+            if (move === 'sweep')
+                actor.angle = -actor.facing * .025 * Math.sin(Math.PI * z);
+            if (!contacted && z >= .5) {
+                contacted = true;
+                if (move !== 'approach' && move !== 'retreat')
+                    Kontakt.apply(battle, actor, def, move, result);
+                if (result.hit) {
+                    if (move !== 'guard' && move !== 'approach' && move !== 'retreat') {
+                        def.offsetX = Math.sign(def.x - actor.x) * (result.crit ? 45 : 26);
+                        def.offsetY = move === 'sweep' ? 34 : move === 'throw' ? 20 : 0;
+                        if (move === 'throw')
+                            def.angle = -def.facing * .63;
+                        if (result.knockdown)
+                            def.pose = 'kneel';
+                        view.impact(def, result.target, true, result.crit);
+                        audio.hit(result.crit);
+                    }
+                }
+                else if (!['guard', 'approach', 'retreat', 'recover'].includes(move))
+                    audio.miss();
+                updateHUD();
+                say(result.message, result.hit);
+            }
+            if (contacted && z > .56) {
+                const back = (1 - Kontakt.clamp((z - .56) / .42, 0, 1));
+                if (!def.down) {
+                    def.offsetX *= Math.max(.15, back);
+                    if (move !== 'sweep' && move !== 'throw')
+                        def.offsetY *= back;
+                    def.angle *= back;
+                }
+            }
+        });
+        actor.offsetX = 0;
+        actor.offsetY = 0;
+        actor.angle = 0;
+        if (move === 'approach' || move === 'retreat') {
+            actor.x = endX;
+            actor.stamina = Kontakt.clamp(actor.stamina + 10, 0, 100);
+            actor.offsetX = 0;
+        }
+        actor.pose = actor.kneelTurns > 0 ? 'kneel' : 'idle';
+        if (!def.down) {
+            def.offsetX = 0;
+            def.angle = 0;
+            def.offsetY = 0;
+            def.pose = def.kneelTurns > 0 ? 'kneel' : 'idle';
+        }
+    }
+    async function fallKO(f) {
+        f.pose = 'kneel';
+        audio.finish();
+        say(`${f.name} падает на настил. НОКАУТ!`, true);
+        await animate(950, p => {
+            const ease = 1 - Math.pow(1 - p, 3);
+            f.angle = -f.facing * 1.42 * ease;
+            f.offsetX = f.facing * -95 * ease;
+            f.offsetY = 100 * Math.sin(Math.PI * .5 * ease);
+        });
+    }
+    async function doRound(first, second) {
+        if (roundRunning)
+            return;
+        roundRunning = true;
+        battle.busy = true;
+        updateButtons();
+        for (const f of battle.fighters)
+            f.guard = false;
+        const jobs = [
+            [battle.fighters[0], battle.fighters[1], first],
+            [battle.fighters[1], battle.fighters[0], second]
+        ];
+        jobs.sort((a, b) => Kontakt.initiative(b[0], b[2]) - Kontakt.initiative(a[0], a[2]));
+        for (const [actor, def, move] of jobs) {
+            if (actor.down || def.down)
+                break;
+            if (actor.kneelTurns > 0 && move !== 'recover') {
+                // A successful sweep has interrupted the already committed action.
+                say(`${actor.name} теряет атаку: сбит с ног.`, true);
+                continue;
+            }
+            await playAction(actor, def, move);
+            if (actor.down || def.down)
+                break;
+            await delay(110);
+        }
+        for (const f of battle.fighters)
+            f.stamina = Kontakt.clamp(f.stamina + 8, 0, 100);
+        const [p1, p2] = battle.fighters;
+        if (p1.down || p2.down) {
+            battle.over = true;
+            battle.winner = p1.down && p2.down ? null : p1.down ? 1 : 0;
+            await fallKO(p1.down ? p1 : p2);
+            setText('#winner', battle.winner === null ? 'НИЧЬЯ' : `ПОБЕДИЛ ${battle.fighters[battle.winner].name}`);
+            q('#gameOver').classList.remove('is-hidden');
+            setText('#winnerDetails', `Раундов: ${battle.round}. Получено повреждений: ${p1.blood + p2.blood}.`);
+        }
+        else
+            battle.round++;
+        battle.busy = false;
+        roundRunning = false;
+        updateButtons();
+    }
+    function chooseMove(move) {
+        if (battle.busy || battle.over || roundRunning)
+            return;
+        audio.init();
+        const p1 = battle.fighters[0], p2 = battle.fighters[1];
+        if (battle.mode === 'local' && !battle.pending) {
+            battle.pending = p1.kneelTurns > 0 ? 'recover' : move;
+            say('Игрок 1 выбрал приём. Передай управление игроку 2.');
+            updateButtons();
+            return;
+        }
+        const first = battle.mode === 'local' ? (battle.pending || 'guard') : (p1.kneelTurns > 0 ? 'recover' : move);
+        const second = battle.mode === 'local' ? (p2.kneelTurns > 0 ? 'recover' : move) : Kontakt.chooseBot(p2, p1);
+        battle.pending = null;
+        void doRound(first, second);
+    }
+    // UI
+    document.querySelectorAll('[data-move]').forEach(b => b.addEventListener('click', () => chooseMove(b.dataset.move)));
+    document.querySelectorAll('[data-kit]').forEach(b => b.addEventListener('click', () => {
+        selectedKit = b.dataset.kit;
+        document.querySelectorAll('[data-kit]').forEach(el => el.classList.toggle('chosen', el === b));
+        q('#introFighter').src = Kontakt.assetUrl(`fighter_${selectedKit}_idle.webp`);
+    }));
+    document.querySelectorAll('[data-build]').forEach(b => b.addEventListener('click', () => {
+        selectedBuild = b.dataset.build;
+        document.querySelectorAll('[data-build]').forEach(el => el.classList.toggle('chosen', el === b));
+    }));
+    document.querySelectorAll('[data-mode]').forEach(b => b.addEventListener('click', () => {
+        selectedMode = b.dataset.mode;
+        document.querySelectorAll('[data-mode]').forEach(el => el.classList.toggle('chosen', el === b));
+    }));
+    q('#startButton').addEventListener('click', resetBattle);
+    q('#rematch').addEventListener('click', resetBattle);
+    q('#editButton').addEventListener('click', () => { if (roundRunning)
+        return; q('#intro').classList.remove('is-hidden'); });
+    q('#soundButton').addEventListener('click', () => { const enabled = audio.toggle(); setText('#soundButton', enabled ? 'ЗВУК: ВКЛ' : 'ЗВУК: ВЫКЛ'); });
+    document.addEventListener('keydown', (e) => {
+        if (e.target instanceof HTMLInputElement)
+            return;
+        if (!q('#intro').classList.contains('is-hidden'))
+            return;
+        const seq = ['jaw', 'elbow', 'knee', 'sweep', 'throw', 'guard', 'approach', 'retreat'];
+        if (/^[1-8]$/.test(e.key)) {
+            e.preventDefault();
+            chooseMove(seq[Number(e.key) - 1]);
+        }
+        if (e.key.toLowerCase() === 'r') {
+            chooseMove('recover');
+        }
+    });
+    const render = (t) => { view.frame(battle, t); requestAnimationFrame(render); };
+    requestAnimationFrame(render);
+    updateHUD();
+    updateButtons();
+    window.__KONTAKT_DEBUG = {
+        battle: () => battle, view: () => view, choose: (move) => chooseMove(move), start: resetBattle,
+        setHP: (id, hp) => { battle.fighters[id].hp = hp; updateHUD(); },
+        forceKneel: (id) => { const f = battle.fighters[id]; f.kneelTurns = 1; f.pose = 'kneel'; updateButtons(); },
+        version: '0.6.0'
+    };
+})(Kontakt || (Kontakt = {}));

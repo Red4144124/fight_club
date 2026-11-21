@@ -1,11 +1,20 @@
 {
-  "name": "kontakt-bloodline",
-  "version": "0.5.0",
-  "description": "JavaScript WebGL2 stylized cinematic 1v1 fighting game",
+  "name": "kontakt-hd-arena",
+  "version": "0.6.0",
   "private": true,
+  "type": "module",
   "scripts": {
-    "start": "node server.js",
-    "check": "node --check engine.js && node --check game.js && node --check server.js"
+    "compile": "tsc -p tsconfig.json",
+    "dev": "npm run compile && vite --host 0.0.0.0",
+    "build": "npm run compile && vite build",
+    "preview": "vite preview --host 0.0.0.0"
   },
-  "engines": {"node": ">=18"}
+  "dependencies": {
+    "phaser": "3.90.0"
+  },
+  "devDependencies": {
+    "typescript": "~5.9.3",
+    "vite": "^7.2.4"
+  },
+  "description": "Cinematic turn-based 2D fighting game with hand-drawn fighters, Phaser/WebGL and canvas fallback"
 }
