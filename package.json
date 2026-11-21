@@ -1,10 +1,11 @@
 {
-  "name": "kontakt-cinematic",
-  "version": "0.4.0",
+  "name": "kontakt-bloodline",
+  "version": "0.5.0",
+  "description": "JavaScript WebGL2 stylized cinematic 1v1 fighting game",
   "private": true,
-  "description": "Procedural WebGL2 1v1 fighting game",
   "scripts": {
     "start": "node server.js",
     "check": "node --check engine.js && node --check game.js && node --check server.js"
-  }
+  },
+  "engines": {"node": ">=18"}
 }

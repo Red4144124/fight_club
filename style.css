@@ -59,4 +59,31 @@ header{border-bottom-color:#34414a}
 .enemy .bars span{background:linear-gradient(90deg,#886a59,#eac8a0)}
 @media(max-width:800px){.cam-toggle{display:none}.fight-scene{height:clamp(410px,92vw,510px)}.lens-info{display:none}}
 @media(max-width:600px){.brand b{font-size:17px;letter-spacing:.1em}.arenaInfo{font-size:7px;left:12px}.roundpill{right:11px;font-size:8px}.soundnotice{left:12px;font-size:7px}.fight-scene{height:clamp(365px,94vw,450px)}}
+/* BLOODLINE / CINEMATIC COMBAT PASS */
+:root{--red:#ed8067;--gold:#f0c9a1;--maroon:#a94f53}
+.brand small{color:#b7a19d}.brand b{letter-spacing:.13em}
+.intro h1{font-size:clamp(35px,4.6vw,67px)}
+.intro p{max-width:740px;line-height:1.7}
+.damage-preview-btn{position:absolute;z-index:9;bottom:20px;left:24px;padding:11px 15px;border-radius:7px;border:1px solid rgba(241,158,135,.65);font:850 10px/1.3 monospace;letter-spacing:.09em;color:#ffdec9;background:rgba(31,19,22,.86);box-shadow:0 9px 22px rgba(0,0,0,.36);backdrop-filter:blur(8px);transition:background .2s,transform .2s}
+.damage-preview-btn[aria-pressed=true]{background:#6a2d31;border-color:#f9a28d}
+.damage-preview-btn:hover{transform:translateY(-2px)}
+.injury-status{font:850 8px/1.35 monospace;letter-spacing:.09em;color:#da9381;min-height:11px;white-space:nowrap;text-transform:uppercase;padding-top:4px}
+.injury-status.kneeling{color:#ffd7a3;animation:kneelGlow 1s ease-in-out infinite alternate}
+@keyframes kneelGlow{to{opacity:.65}}
+.kneel-notice{margin:12px 0 8px;padding:12px 13px;background:linear-gradient(120deg,rgba(145,64,52,.23),rgba(32,26,28,.72));border:1px solid #8e5b52;border-radius:8px;color:#ffcfb0;font-size:12px;line-height:1.5}
+.recover-btn{display:block;width:100%;padding:14px 10px;background:linear-gradient(90deg,#fac28c,#de9166);border:0;border-radius:7px;color:#2f211d;font:950 12px monospace;letter-spacing:.07em;margin:8px 0;box-shadow:0 12px 30px rgba(210,94,54,.18)}
+.recover-btn:hover{filter:brightness(1.12)}
+.damage-key{margin:10px 0 6px;color:#bc9c94;font:800 9px/1.5 monospace;letter-spacing:.05em}
+.damage-key span{color:#d95855;font-size:12px}
+[hidden]{display:none!important}
+.fight-scene{background:#0b1116}
+.fight-scene::after{background:radial-gradient(ellipse 73% 66% at 51% 46%,transparent 9%,rgba(1,4,7,.12) 65%,rgba(1,4,7,.73) 100%),linear-gradient(90deg,rgba(30,124,141,.09),transparent 31%,transparent 70%,rgba(204,93,65,.14))}
+.moves button[data-action='sweep']{border-color:#71604e;background:linear-gradient(150deg,#202326,#1b1819)}
+.moves button[data-action='tripthrow']{border-color:#8a594e;background:linear-gradient(150deg,#2e2428,#181920)}
+@media(max-width:600px){.damage-preview-btn{bottom:9px;left:10px;padding:9px;font-size:9px}.injury-status{font-size:7px}.damage-key{font-size:8px}}
 
+/* Screen-space blood flecks: readable impacts even on the CPU fallback renderer. */
+.impactfx{position:absolute;inset:0;z-index:7;pointer-events:none;overflow:hidden}
+.blood-dot{position:absolute;background:linear-gradient(140deg,#d94f53,#631923);border-radius:60% 35% 70% 40%;box-shadow:0 0 5px rgba(130,24,34,.3);animation:bloodTravel var(--dur,.52s) cubic-bezier(.11,.42,.32,1) forwards}
+@keyframes bloodTravel{0%{opacity:.94;transform:translate(0,0) scale(1.2)}35%{opacity:1}100%{opacity:0;transform:translate(var(--dx,40px),var(--dy,120px)) rotate(115deg) scale(.45)}}
+@media(prefers-reduced-motion:reduce){.blood-dot{animation-duration:.001ms!important;opacity:0}}
